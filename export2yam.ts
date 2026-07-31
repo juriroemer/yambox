@@ -1,8 +1,21 @@
 import { parse as parseCsv } from "csv-parse/sync";
 import { csvKeys, type CsvKey } from "./csv";
 import { createObjectCsvWriter } from "csv-writer";
+import { parseArgs } from "util";
 
 const RESOLVE_URIS = Bun.env.RESOLVE_URIS !== "false";
+
+const { values, positionals } = parseArgs({
+  args: Bun.argv.slice(2),
+
+  options: {
+    diaryonly: { type: "boolean" },
+  },
+
+  strict: false,
+});
+
+const diaryOnly = values.diaryonly ?? false;
 
 const uriCache: Record<string, { type: string; id: number }> = {};
 const uriFile = Bun.file("uris.txt");
@@ -125,6 +138,8 @@ const parseExport = async (directory: string) => {
         return 1;
       });
 
+    if (diaries.length == 0 && diaryOnly) continue;
+
     const latestEntry = [...diaries].sort(
       (a, b) =>
         new Date(b["Watched Date"]).getTime() -
@@ -161,7 +176,7 @@ const parseExport = async (directory: string) => {
             const urlMatch = html.match(/href=(?:"|')https:\/\/www.themoviedb.org\/(movie|tv)\/(\d+)\/?(?:"|')/);
             if (urlMatch?.[1]) {
               type = urlMatch[1];
-              id = Number(urlMatch[2])
+              id = Number(urlMatch[2]);
             }
           }
 
@@ -201,7 +216,7 @@ const parseExport = async (directory: string) => {
 };
 
 (async () => {
-  const folders = process.argv.slice(2);
+  const folders: string[] = positionals;
   if (folders.length === 0) {
     throw Error(
       "Must provide letterboxd export directory names, space-separated, to this command",
@@ -221,10 +236,10 @@ const parseExport = async (directory: string) => {
   }
   }
 
-  uriWriter.start()
+  uriWriter.start();
   const allExports = [];
   for (const folder of folders) {
-    allExports.push(...await parseExport(folder));
+    allExports.push(...(await parseExport(folder)));
   }
   uriWriter.end();
 
