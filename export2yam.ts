@@ -3,19 +3,40 @@ import { csvKeys, type CsvKey } from "./csv";
 import { createObjectCsvWriter } from "csv-writer";
 import { parseArgs } from "node:util";
 
-const RESOLVE_URIS = Bun.env.RESOLVE_URIS !== "false";
-
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
 
   options: {
-    diaryonly: { type: "boolean" },
+    help: { type: "boolean", default: false, short: "h" },
+    "diary-only": { type: "boolean", default: false },
+    "resolve-uris": {
+      type: "boolean",
+      default: Bun.env.RESOLVE_URIS !== "false",
+    },
   },
 
-  strict: false,
+  strict: true,
+  allowNegative: true,
+  allowPositionals: true,
 });
 
-const diaryOnly = values.diaryonly ?? false;
+const diaryOnly = values["diary-only"];
+const resolveUris = values["resolve-uris"];
+
+if (values.help) {
+  console.log(
+    [
+      "export2yam",
+      "----------",
+      "--diary-only (default false)",
+      "Restricts output to only films that have diary entries",
+      "",
+      "--resolve-uris, --no-resolve-uris (default true)",
+      "Allows the script to resolve Letterboxd URIs from your export, which prevents the need for Yamtrack to do fuzzy matching on the films' titles",
+    ].join("\n"),
+  );
+  process.exit(0);
+}
 
 const uriCache: Record<string, { type: string; id: number }> = {};
 const uriFile = Bun.file("uris.txt");
@@ -26,12 +47,14 @@ export const writeCsv = async (items: CombinationEntry[]) => {
 
   const writer = createObjectCsvWriter({
     path: "output.csv",
-    header: csvKeys.map(key => ({id: key, title: key})),
-  })
+    header: csvKeys.map((key) => ({ id: key, title: key })),
+  });
 
   for (const item of items) {
-    if (RESOLVE_URIS && !item.tmdb) {
-      console.log(`No resolution for ${item.uri} (${item.name}) - skipping to avoid import errors`);
+    if (resolveUris && !item.tmdb) {
+      console.log(
+        `No resolution for ${item.uri} (${item.name}) - skipping to avoid import errors`,
+      );
       continue;
     }
 
@@ -147,7 +170,7 @@ const parseExport = async (directory: string) => {
     )[0];
 
     let tmdb: { type: string; id: number } | undefined;
-    if (RESOLVE_URIS) {
+    if (resolveUris) {
       const lbUri = entry["Letterboxd URI"];
       const cached = uriCache[lbUri];
       if (cached) tmdb = cached;
@@ -173,7 +196,9 @@ const parseExport = async (directory: string) => {
           }
           // Fallback, particularly for TV
           if (!id) {
-            const urlMatch = html.match(/href=(?:"|')https:\/\/www.themoviedb.org\/(movie|tv)\/(\d+)\/?(?:"|')/);
+            const urlMatch = html.match(
+              /href=(?:"|')https:\/\/www.themoviedb.org\/(movie|tv)\/(\d+)\/?(?:"|')/,
+            );
             if (urlMatch?.[1]) {
               type = urlMatch[1];
               id = Number(urlMatch[2]);
@@ -216,24 +241,24 @@ const parseExport = async (directory: string) => {
 };
 
 (async () => {
-  const folders: string[] = positionals;
+  const folders = positionals;
   if (folders.length === 0) {
     throw Error(
       "Must provide letterboxd export directory names, space-separated, to this command",
     );
   }
 
-  if (RESOLVE_URIS) {
-  try {
-    const text = await uriFile.text();
-    for (const line of text.split("\n")) {
-      if (!line.trim()) continue;
-      const [uri, id, type] = line.split(" ");
-      uriCache[uri] = { id: Number(id), type };
+  if (resolveUris) {
+    try {
+      const text = await uriFile.text();
+      for (const line of text.split("\n")) {
+        if (!line.trim()) continue;
+        const [uri, id, type] = line.split(" ");
+        uriCache[uri] = { id: Number(id), type };
+      }
+    } catch {
+      console.error("Failed to open uris.txt, probably does not exist");
     }
-  } catch {
-    console.error("Failed to open uris.txt, probably does not exist");
-  }
   }
 
   uriWriter.start();
@@ -271,9 +296,7 @@ const parseExport = async (directory: string) => {
       note: `${entry.uri} - ${items
         .flatMap(
           (item) =>
-            item.diary?.map((d) =>
-              `${item.username}: ${d.uri}`.trim(),
-            ) ?? [],
+            item.diary?.map((d) => `${item.username}: ${d.uri}`.trim()) ?? [],
         )
         .join(" - ")
         .trim()}`,
