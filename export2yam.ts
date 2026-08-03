@@ -1,7 +1,7 @@
 import { parse as parseCsv } from "csv-parse/sync";
 import { csvKeys, type CsvKey } from "./csv";
 import { createObjectCsvWriter } from "csv-writer";
-import { parseArgs } from "util";
+import { parseArgs } from "node:util";
 
 const RESOLVE_URIS = Bun.env.RESOLVE_URIS !== "false";
 
@@ -138,7 +138,7 @@ const parseExport = async (directory: string) => {
         return 1;
       });
 
-    if (diaries.length == 0 && diaryOnly) continue;
+    if (diaries.length === 0 && diaryOnly) continue;
 
     const latestEntry = [...diaries].sort(
       (a, b) =>
